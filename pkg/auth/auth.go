@@ -53,7 +53,7 @@ type ErrorResponse struct {
 
 type APIError struct {
 	StatusCode int
-	Body       ErrorResponse
+	Body       *ErrorResponse
 }
 
 func (e *APIError) Error() string {
@@ -110,7 +110,6 @@ func (daf *DeviceAuthFlow) ClientID() string {
 
 func (daf *DeviceAuthFlow) FetchDeviceCode(scope string, audience string) (*DeviceCodeResponse, error) {
 	url := daf.baseURL + "/oauth/device/code"
-	fmt.Println(scope)
 	payload := strings.NewReader(fmt.Sprintf("client_id=%s&scope=%s&audience=%s", daf.clientID, neturl.QueryEscape(scope), neturl.QueryEscape(audience)))
 
 	statusCode, resBody, err := postForm(url, payload)
@@ -119,6 +118,13 @@ func (daf *DeviceAuthFlow) FetchDeviceCode(scope string, audience string) (*Devi
 	}
 
 	if statusCode != 200 {
+		if statusCode/100 == 4 {
+			er := new(ErrorResponse)
+			if err := json.Unmarshal(resBody, er); err != nil {
+				return nil, fmt.Errorf("could not decode device code response body: %w", err)
+			}
+			return nil, &APIError{StatusCode: statusCode, Body: er}
+		}
 		return nil, fmt.Errorf("device code request was failed: %s", string(resBody))
 	}
 

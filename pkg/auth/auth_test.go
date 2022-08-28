@@ -67,6 +67,43 @@ var _ = Describe("DeviceAuthFlow", func() {
 			}))
 			Expect(ms.restExpects()).To(BeEmpty())
 		})
+
+		It("returns APIError when 4xx occured", func() {
+			// Arrange
+			statusCode := 403
+			errorCode := "unauthorized_client"
+			errorDescription := "Unauthorized or unknown client"
+			ms := newMockServer([]requestExpectation{
+				{
+					path: "/oauth/device/code",
+					form: map[string][]string{
+						"client_id": {clientID},
+						"scope":     {scope},
+						"audience":  {audience},
+					},
+					statusCode: statusCode,
+					responseBody: fmt.Sprintf(`{
+						"error": "%s",
+						"error_description": "%s"
+					}`, errorCode, errorDescription),
+				},
+			})
+			defer ms.Close()
+
+			// Act
+			daf, err := auth.NewDeviceAuthFlow(auth.WithBaseURL(ms.URL), auth.WithClientID(clientID))
+			if err != nil {
+				panic(err)
+			}
+			_, err = daf.FetchDeviceCode(scope, audience)
+
+			// Assert
+			Expect(err).To(MatchError(&auth.APIError{
+				StatusCode: statusCode,
+				Body:       &auth.ErrorResponse{Error: errorCode, ErrorDescription: errorDescription}},
+			))
+			Expect(ms.restExpects()).To(BeEmpty())
+		})
 	})
 })
 
