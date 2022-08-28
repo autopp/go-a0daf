@@ -1,0 +1,47 @@
+name: close-release-pr
+
+on:
+  pull_request:
+    branches: ["main"]
+    types: ["closed"]
+
+jobs:
+  cleanup-release:
+    runs-on: ubuntu-latest
+    if: "startsWith(github.head_ref, 'release/') && !github.event.pull_request.head.fork"
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v2
+    - name: Publish
+      run: |
+        VERSION=${GITHUB_HEAD_REF#release/}
+        echo target version is ${VERSION}
+
+        RELEASE=$(hub release --include-drafts -f "%T:%S%n" | grep -e "^${VERSION//./\\.}:")
+        if [ -z "${RELEASE}" ]; then
+          echo "Release ${VERSION} is not found"
+          exit 1
+        fi
+        STATE=$(echo "${RELEASE}" | cut -d : -f 2)
+        if [ "${STATE}" != draft ]; then
+          echo "Release ${VERSION} is already published"
+          exit 0
+        fi
+
+        if [ "${{ github.event.pull_request.merged }}" = true ]; then
+          echo "Publish ${VERSION} from draft"
+          hub release edit --draft=false -m "" "${VERSION}"
+        else
+          echo "Delete ${VERSION}"
+          gh release delete "${VERSION}"
+        fi
+    - name: Notify to Slack
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        fields: repo,took,workflow,job,ref,message
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      if: always()
