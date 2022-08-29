@@ -22,20 +22,24 @@ import (
 	"net/http"
 	neturl "net/url"
 	"strings"
+	"time"
 )
 
 type DeviceAuthFlow struct {
-	baseURL  string
-	clientID string
+	baseURL   string
+	clientID  string
+	timeNow   func() time.Time
+	timeSleep func(d time.Duration)
 }
 
 type DeviceCodeResponse struct {
-	DeviceCode              string `json:"device_code"`
-	UserCode                string `json:"user_code"`
-	VerificationURI         string `json:"verification_uri"`
-	VerificationURIComplete string `json:"verification_uri_complete"`
-	ExpiresIn               int    `json:"expires_in"`
-	Interval                int    `json:"interval"`
+	DeviceCode              string    `json:"device_code"`
+	UserCode                string    `json:"user_code"`
+	VerificationURI         string    `json:"verification_uri"`
+	VerificationURIComplete string    `json:"verification_uri_complete"`
+	ExpiresIn               int       `json:"expires_in"`
+	Interval                int       `json:"interval"`
+	ExpiresAt               time.Time `json:"-"`
 }
 
 type TokenResponse struct {
@@ -60,12 +64,23 @@ func (e *APIError) Error() string {
 	return e.Body.Error + ": " + e.Body.ErrorDescription
 }
 
+type ExpiredError struct {
+	ExpiresIn int
+}
+
+func (e *ExpiredError) Error() string {
+	return fmt.Sprintf("authorization was expired in %d sec", e.ExpiresIn)
+}
+
 type DeviceAuthFlowOption interface {
 	apply(daf *DeviceAuthFlow) error
 }
 
 func NewDeviceAuthFlow(opts ...DeviceAuthFlowOption) (*DeviceAuthFlow, error) {
-	daf := &DeviceAuthFlow{}
+	daf := &DeviceAuthFlow{
+		timeNow:   time.Now,
+		timeSleep: time.Sleep,
+	}
 
 	// apply options
 	for _, opt := range opts {
@@ -100,6 +115,20 @@ func (clientID WithClientID) apply(daf *DeviceAuthFlow) error {
 	return nil
 }
 
+type WithTimeNow func() time.Time
+
+func (timeNow WithTimeNow) apply(daf *DeviceAuthFlow) error {
+	daf.timeNow = timeNow
+	return nil
+}
+
+type WithTimeSleep func(d time.Duration)
+
+func (timeSleep WithTimeSleep) apply(daf *DeviceAuthFlow) error {
+	daf.timeSleep = timeSleep
+	return nil
+}
+
 func (daf *DeviceAuthFlow) BaseURL() string {
 	return daf.baseURL
 }
@@ -113,6 +142,7 @@ func (daf *DeviceAuthFlow) FetchDeviceCode(scope string, audience string) (*Devi
 	payload := strings.NewReader(fmt.Sprintf("client_id=%s&scope=%s&audience=%s", daf.clientID, neturl.QueryEscape(scope), neturl.QueryEscape(audience)))
 
 	statusCode, resBody, err := postForm(url, payload)
+	now := daf.timeNow()
 	if err != nil {
 		return nil, err
 	}
@@ -133,11 +163,48 @@ func (daf *DeviceAuthFlow) FetchDeviceCode(scope string, audience string) (*Devi
 		return nil, fmt.Errorf("could not decode device code response body: %w", err)
 	}
 
+	dc.ExpiresAt = now.Add(time.Duration(dc.ExpiresIn) * time.Second)
+
 	return dc, nil
 }
 
 func (daf *DeviceAuthFlow) PollToken(dc *DeviceCodeResponse) (*TokenResponse, error) {
-	return nil, nil
+	interval := time.Duration(dc.Interval) * time.Second
+	url := daf.baseURL + "/oauth/token"
+	payload := fmt.Sprintf("grant_type=%s&device_code=%s&client_id=%s", "urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code", dc.DeviceCode, daf.clientID)
+
+	for {
+		if !daf.timeNow().Before(dc.ExpiresAt) {
+			return nil, &ExpiredError{
+				ExpiresIn: dc.ExpiresIn,
+			}
+		}
+
+		statusCode, resBody, err := postForm(url, strings.NewReader(payload))
+
+		if statusCode == 200 {
+			t := new(TokenResponse)
+			if err = json.Unmarshal(resBody, t); err != nil {
+				return nil, fmt.Errorf("could not decode token response body: %w", err)
+			}
+			return t, nil
+		}
+
+		if statusCode/100 != 4 {
+			return nil, fmt.Errorf("token request was failed: %s", string(resBody))
+		}
+
+		er := new(ErrorResponse)
+		if err = json.Unmarshal(resBody, er); err != nil {
+			return nil, fmt.Errorf("could not decode token response body: %w", err)
+		}
+
+		if er.Error != "authorization_pending" {
+			return nil, &APIError{StatusCode: statusCode, Body: er}
+		}
+
+		daf.timeSleep(interval)
+	}
 }
 
 func postForm(url string, payload io.Reader) (int, []byte, error) {
