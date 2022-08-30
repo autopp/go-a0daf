@@ -14,5 +14,16 @@
 
 package main
 
+import (
+	"os"
+
+	"github.com/autopp/go-a0daf/pkg/cmd"
+)
+
+var version = "HEAD"
+
 func main() {
+	if cmd.Main(version, os.Stdout, os.Stderr, os.Args[1:]) != nil {
+		os.Exit(1)
+	}
 }
