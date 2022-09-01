@@ -13,6 +13,7 @@ import (
 
 func Main(version string, stdout, stderr io.Writer, args []string) error {
 	versionFlag := "version"
+	completeFlag := "complete"
 	baseURLEnv := "A0DAF_BASE_URL"
 	clientIDEnv := "A0DAF_CLIENT_ID"
 	scopeEnv := "A0DAF_SCOPE"
@@ -30,6 +31,11 @@ func Main(version string, stdout, stderr io.Writer, args []string) error {
 
 			if showVersion {
 				fmt.Fprintln(stdout, version)
+			}
+
+			complete, err := cmd.Flags().GetBool(completeFlag)
+			if err != nil {
+				return err
 			}
 
 			undefinedEnvs := make([]string, 0)
@@ -67,8 +73,12 @@ func Main(version string, stdout, stderr io.Writer, args []string) error {
 				return err
 			}
 
-			fmt.Fprintf(stdout, "Access: %s\n", dc.VerificationURI)
-			fmt.Fprintf(stdout, "Input: %s\n", dc.UserCode)
+			if complete {
+				fmt.Fprintf(stdout, "Access: %s\n", dc.VerificationURIComplete)
+			} else {
+				fmt.Fprintf(stdout, "Access: %s\n", dc.VerificationURI)
+				fmt.Fprintf(stdout, "Input: %s\n", dc.UserCode)
+			}
 
 			token, err := daf.PollToken(dc)
 			if err != nil {
@@ -90,6 +100,7 @@ func Main(version string, stdout, stderr io.Writer, args []string) error {
 	}
 
 	cmd.Flags().Bool(versionFlag, false, "show version")
+	cmd.Flags().Bool(completeFlag, false, "auto complete user code")
 
 	cmd.SetArgs(args)
 
