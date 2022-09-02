@@ -73,11 +73,11 @@ func Main(version string, stdout, stderr io.Writer, args []string) error {
 				return err
 			}
 
+			fmt.Fprintf(stdout, "Code: %s\n", dc.UserCode)
 			if complete {
 				fmt.Fprintf(stdout, "Access: %s\n", dc.VerificationURIComplete)
 			} else {
 				fmt.Fprintf(stdout, "Access: %s\n", dc.VerificationURI)
-				fmt.Fprintf(stdout, "Input: %s\n", dc.UserCode)
 			}
 
 			token, err := daf.PollToken(dc)
