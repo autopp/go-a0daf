@@ -55,9 +55,17 @@ func main() {
   // Show dc.UserCode and dc.VerificationURI or dc.VerificationURIComplete
 
   // Poll token
-  token, _ := daf.PollToken(dc)
-
-  // Ok, now we get token!
+  token, err := daf.PollToken(dc)
+  var expiredError *auth.ExpiredError
+  if err != nil {
+    if errors.As(err, &expiredError) {
+      // verification was expired
+    } else {
+      // other error was occured
+    }
+  } else {
+    // Ok, now we get token!
+  }
 }
 ```
 
