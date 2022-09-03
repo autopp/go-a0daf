@@ -36,7 +36,7 @@ jobs:
       run: |
         make test
     - name: Upload coverage report
-      uses: codecov/codecov-action@v2
+      uses: codecov/codecov-action@v3
       with:
         files: ./coverprofile.out
         fail_ci_if_error: true
