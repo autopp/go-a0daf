@@ -31,6 +31,7 @@ func Main(version string, stdout, stderr io.Writer, args []string) error {
 
 			if showVersion {
 				fmt.Fprintln(stdout, version)
+				return nil
 			}
 
 			complete, err := cmd.Flags().GetBool(completeFlag)
