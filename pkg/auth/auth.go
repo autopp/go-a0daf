@@ -154,7 +154,10 @@ func (daf *DeviceAuthFlow) ClientID() string {
 
 // FetchDeviceCode requests device code endpoint and returns a DeviceCodeResponse
 func (daf *DeviceAuthFlow) FetchDeviceCode(scope string, audience string) (*DeviceCodeResponse, error) {
-	url := daf.baseURL + "/oauth/device/code"
+	url, err := neturl.JoinPath(daf.baseURL, "/oauth/device/code")
+	if err != nil {
+		return nil, err
+	}
 	payload := strings.NewReader(fmt.Sprintf("client_id=%s&scope=%s&audience=%s", daf.clientID, neturl.QueryEscape(scope), neturl.QueryEscape(audience)))
 
 	statusCode, resBody, err := postForm(url, payload)
@@ -189,7 +192,10 @@ func (daf *DeviceAuthFlow) FetchDeviceCode(scope string, audience string) (*Devi
 // When verification is expired, it returns ExpiredError.
 func (daf *DeviceAuthFlow) PollToken(dc *DeviceCodeResponse) (*TokenResponse, error) {
 	interval := time.Duration(dc.Interval) * time.Second
-	url := daf.baseURL + "/oauth/token"
+	url, err := neturl.JoinPath(daf.baseURL, "/oauth/token")
+	if err != nil {
+		return nil, err
+	}
 	payload := fmt.Sprintf("grant_type=%s&device_code=%s&client_id=%s", "urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code", dc.DeviceCode, daf.clientID)
 
 	for {
